@@ -4,7 +4,7 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, ContextTypes, filters
+    ConversationHandler, filters
 )
 from handlers import (
     start, register_name, register_university, register_age, register_gender,
@@ -52,16 +52,13 @@ telegram_app.add_handler(get_confess_conv_handler())
 @app.route(f"/{WEBHOOK_SECRET}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    # Await the coroutine in the running event loop
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # If inside an already running event loop (likely with Flask+async), use create_task
             asyncio.ensure_future(telegram_app.update_queue.put(update))
         else:
             loop.run_until_complete(telegram_app.update_queue.put(update))
     except RuntimeError:
-        # If no event loop, create one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(telegram_app.update_queue.put(update))
@@ -73,8 +70,10 @@ def index():
 
 if __name__ == "__main__":
     import telegram
-    bot = telegram.Bot(token=TOKEN)
-    webhook_url = f"{RENDER_EXTERNAL_URL}/{WEBHOOK_SECRET}"
-    bot.delete_webhook()
-    bot.set_webhook(url=webhook_url)
+    async def setup_webhook():
+        bot = telegram.Bot(token=TOKEN)
+        webhook_url = f"{RENDER_EXTERNAL_URL}/{WEBHOOK_SECRET}"
+        await bot.delete_webhook()
+        await bot.set_webhook(url=webhook_url)
+    asyncio.run(setup_webhook())
     app.run(host="0.0.0.0", port=10000)
