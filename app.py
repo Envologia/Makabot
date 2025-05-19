@@ -1,4 +1,5 @@
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -14,8 +15,8 @@ from confession import get_confess_conv_handler
 from db import init_db
 
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "supersecret")
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # e.g. https://your-app.onrender.com
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "unimatch-ethio-2f6e3d4c7b9a4e2f8b1c")
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://makabot.onrender.com")
 
 app = Flask(__name__)
 init_db()
@@ -51,7 +52,19 @@ telegram_app.add_handler(get_confess_conv_handler())
 @app.route(f"/{WEBHOOK_SECRET}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    telegram_app.update_queue.put(update)
+    # Await the coroutine in the running event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If inside an already running event loop (likely with Flask+async), use create_task
+            asyncio.ensure_future(telegram_app.update_queue.put(update))
+        else:
+            loop.run_until_complete(telegram_app.update_queue.put(update))
+    except RuntimeError:
+        # If no event loop, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(telegram_app.update_queue.put(update))
     return "OK"
 
 @app.route("/", methods=["GET"])
